@@ -3,13 +3,13 @@ import Nav from '@/components/Nav'
 import Footer from '@/components/Footer'
 import { Card, CardContent } from '@/components/ui/card'
 
-// ── Jane App booking URL — replace with your actual Jane clinic URL ────────────
-// Get this from: Jane App → Settings → Setup → Online Booking → copy the URL
-// It looks like: https://pixopharm.janeapp.com
-const JANE_BOOKING_URL = 'https://pixopharm.janeapp.com'
+// Pixopharm Consulting app — deployed at app.pixopharm.com
+// (DNS A record needed: app.pixopharm.com → 76.76.21.21)
+// Temporary Vercel URL works immediately while DNS propagates
+const CONSULTING_APP_URL = 'https://pixopharm-consulting.vercel.app'
 
-// Set to true once your Jane account is live and the URL above is correct
-const BOOKING_LIVE = false
+// Set to true — booking is now live via the Pixopharm Consulting app
+const BOOKING_LIVE = true
 
 // Accent colour for Consulting throughout this page
 const AMBER = 'hsl(35,78%,40%)'
@@ -132,30 +132,37 @@ function BookingWidget() {
   }
 
   return (
-    <div className="rounded-2xl overflow-hidden border border-[hsl(35,78%,75%)] shadow-sm">
-      <iframe
-        src={JANE_BOOKING_URL}
-        title="Book a Pixopharm Consultation"
-        width="100%"
-        height="700"
-        style={{ border: 'none', display: 'block' }}
-        allow="payment"
-        loading="lazy"
-      />
-      <div className="bg-[hsl(35,78%,97%)] border-t border-[hsl(35,78%,88%)] px-5 py-3 text-center">
-        <p className="text-xs text-[hsl(200,10%,52%)]">
-          Having trouble booking?{' '}
-          <a
-            href={JANE_BOOKING_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="underline hover:text-[hsl(35,78%,35%)] transition-colors"
-            style={{ color: AMBER }}
-          >
-            Open in a new tab →
-          </a>
+    <div className="rounded-2xl border border-[hsl(35,78%,75%)] bg-white p-10 text-center space-y-6">
+      <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto" style={{ backgroundColor: AMBER_BG }}>
+        <CalendarIcon />
+      </div>
+      <div className="space-y-2">
+        <p className="font-semibold text-lg text-[hsl(200,25%,10%)]">Choose your pharmacist</p>
+        <p className="text-sm text-[hsl(200,10%,48%)] max-w-sm mx-auto leading-relaxed">
+          Browse our registered Caribbean pharmacists, view their specialties and availability, and book your private video consultation in minutes.
         </p>
       </div>
+      <div className="flex flex-col sm:flex-row gap-3 justify-center">
+        <a
+          href={`${CONSULTING_APP_URL}/pharmacists`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center justify-center h-11 px-7 rounded-lg text-white font-medium text-sm transition-opacity hover:opacity-90"
+          style={{ backgroundColor: AMBER }}
+        >
+          Browse Pharmacists →
+        </a>
+        <a
+          href={CONSULTING_APP_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center justify-center h-11 px-7 rounded-lg font-medium text-sm border text-[hsl(35,78%,35%)] hover:bg-[hsl(35,78%,97%)] transition-colors"
+          style={{ borderColor: 'hsl(35,78%,65%)' }}
+        >
+          Learn more
+        </a>
+      </div>
+      <p className="text-xs text-[hsl(200,10%,60%)]">No account required to browse. Secure booking — private video call included.</p>
     </div>
   )
 }
@@ -219,12 +226,12 @@ export default function Consulting() {
                     Book a Consultation
                   </a>
                   <a
-                    href={JANE_BOOKING_URL}
+                    href={`${CONSULTING_APP_URL}/pharmacists`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center justify-center h-11 px-6 rounded-lg font-medium text-sm text-white/70 hover:text-white border border-white/20 hover:border-white/35 hover:bg-white/5 transition-all"
                   >
-                    Open booking in new tab →
+                    Browse pharmacists →
                   </a>
                 </>
               ) : (
@@ -326,7 +333,7 @@ export default function Consulting() {
               'Private video consultation',
               'Registered pharmacists only',
               'Written report included',
-              'Secure booking via Jane',
+              'Private video call included',
             ].map(t => (
               <span key={t} className="flex items-center gap-1.5 text-xs text-[hsl(200,10%,45%)]">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={AMBER} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -340,11 +347,7 @@ export default function Consulting() {
           <BookingWidget />
 
           <p className="mt-4 text-center text-xs text-[hsl(200,10%,58%)]">
-            Booking is managed securely through{' '}
-            <a href="https://jane.app" target="_blank" rel="noopener noreferrer" className="underline hover:text-[hsl(35,78%,35%)]" style={{ color: AMBER }}>
-              Jane App
-            </a>
-            . Your information is never shared.
+            Consultations are conducted privately via secure video call. Your information is never shared.
           </p>
         </div>
       </section>
