@@ -222,7 +222,7 @@ export default function Home() {
                 { title: 'Spaced-repetition flashcards', desc: 'SM-2 algorithm — study smarter, not longer' },
                 { title: 'Branching scenarios', desc: 'Real clinical decisions, not multiple choice only' },
                 { title: "Bloom's Taxonomy aligned", desc: 'From recall to evaluation — real clinical reasoning' },
-                { title: 'Verifiable certificates', desc: 'Share with employers and licensing bodies' },
+                { title: 'One verifiable diploma', desc: 'The Caribbean Pharmacy Technician Diploma — share with employers and licensing bodies' },
                 { title: 'Institution dashboard', desc: 'Student tracking, analytics, course management' },
               ].map(item => (
                 <div key={item.title} className="flex items-start gap-2.5">

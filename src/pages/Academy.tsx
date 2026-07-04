@@ -48,8 +48,8 @@ const FEATURES = [
         <path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M9 15l2 2 4-4"/>
       </svg>
     ),
-    title: 'Verifiable certificates',
-    desc: 'Complete a course and earn a certificate you can share with employers, licensing bodies, or add to your professional portfolio.',
+    title: 'One verifiable diploma',
+    desc: 'Complete the programme and earn the Caribbean Pharmacy Technician Diploma — a credential you can share with employers, licensing bodies, or add to your professional portfolio.',
   },
   {
     icon: (
