@@ -87,20 +87,20 @@ const DOMAINS = [
 
 const WHO_FOR = [
   {
-    title: 'Pharmacy Students',
-    desc: 'Supplement your lectures with Caribbean-contextualised content. Study at your own pace. Arrive at practicals and internships better prepared than anyone else in the room.',
+    title: 'Aspiring Pharmacy Technicians',
+    desc: 'Starting from zero? The diploma takes you from your first day of study to certification — no prior pharmacy experience required.',
   },
   {
-    title: 'Pre-Registration Interns',
-    desc: "You're in your internship year and there are gaps. The Academy fills them — with structured courses aligned to what Caribbean pharmacy boards actually assess.",
+    title: 'Pharmacy Assistants & Dispensary Staff',
+    desc: 'Already working behind the counter? Turn your on-the-job experience into a structured, verifiable credential employers recognise.',
   },
   {
-    title: 'Practicing Pharmacists',
-    desc: 'CDAP was updated. The NHF formulary changed. New drugs entered the market. The Academy keeps you current — in hours, not days.',
-  },
-  {
-    title: 'Pharmacy Technicians',
+    title: 'Practicing Pharmacy Technicians',
     desc: 'Build the foundational knowledge your role demands. Understand the why behind every step in the dispensing process.',
+  },
+  {
+    title: 'Career Changers',
+    desc: 'Moving into healthcare? Pharmacy technician roles are in demand across the Caribbean — and this diploma is the structured pathway in.',
   },
 ]
 
@@ -255,7 +255,7 @@ export default function Academy() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
           <div className="text-center mb-12">
             <h2 className="text-2xl sm:text-3xl font-bold text-[hsl(200,25%,10%)]">
-              For every stage of your pharmacy career
+              Built for Pharmacy Technicians — at every stage
             </h2>
           </div>
 
