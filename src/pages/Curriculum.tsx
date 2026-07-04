@@ -475,15 +475,16 @@ export default function Curriculum() {
               The diploma is fully online and self-paced. Each course combines interactive lessons,
               spaced-repetition flashcards, branching clinical scenarios, and quizzes aligned to
               Bloom's Taxonomy — so you build real dispensary judgement, not just exam recall.
-              Finish a course and earn a verifiable certificate; finish the journey and you're
-              prepared for pharmacy technician certification and real Caribbean practice.
+              Complete every stage of the journey and earn the Caribbean Pharmacy Technician
+              Diploma — one verifiable credential that prepares you for pharmacy technician
+              certification and real Caribbean practice.
             </p>
           </div>
           <ul className="mt-6 space-y-2.5">
             {[
-              'Designed for pharmacy students, technicians, and career changers across the Caribbean',
+              'Designed for aspiring and practicing pharmacy technicians and career changers across the Caribbean',
               'Study from any device, on your own schedule — no fixed timetables',
-              'Verifiable certificates you can share with employers and licensing bodies',
+              'One verifiable diploma you can share with employers and licensing bodies',
             ].map(item => (
               <li key={item} className="flex items-start gap-2.5 text-sm text-[hsl(200,10%,38%)]">
                 <svg
