@@ -43,6 +43,15 @@ function AlertIcon() {
   )
 }
 
+function ShieldIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>
+      <path d="m9 12 2 2 4-4"/>
+    </svg>
+  )
+}
+
 function CalendarIcon() {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -110,6 +119,13 @@ const WHO_FOR = [
     desc: 'Caregivers who oversee a family member\'s medication regimen carry significant clinical responsibility. A consultation provides a clear structured overview of all medications and a practical management framework.',
     detail: 'Available for patients who are unable to attend in person — a caregiver or appointed representative may attend on their behalf.',
     icon: <CalendarIcon />,
+  },
+  {
+    title: 'Healthcare professionals & administrators',
+    desc: 'Healthcare professionals and administrative stakeholders requiring guidance in standardizing patient care, improving safety, and ensuring regulatory compliance.',
+    detail: 'Advisory engagements for pharmacies, clinics, and healthcare organizations — SOPs, quality systems, and compliance frameworks grounded in Caribbean regulatory practice.',
+    icon: <ShieldIcon />,
+    wide: true,
   },
 ]
 
@@ -360,13 +376,13 @@ export default function Consulting() {
               Who we help
             </h2>
             <p className="mt-3 text-white/50 max-w-md mx-auto">
-              Any patient managing medications in the Caribbean — whether your own regimen or that of someone in your care.
+              Any patient managing medications in the Caribbean — whether your own regimen or that of someone in your care — and the professionals and organizations responsible for patient safety.
             </p>
           </div>
 
           <div className="grid md:grid-cols-2 gap-5">
             {WHO_FOR.map((item, i) => (
-              <div key={i} className="rounded-xl bg-white/5 border border-white/10 p-6 space-y-3 hover:bg-white/8 transition-colors">
+              <div key={i} className={`rounded-xl bg-white/5 border border-white/10 p-6 space-y-3 hover:bg-white/8 transition-colors${item.wide ? ' md:col-span-2' : ''}`}>
                 <div
                   className="w-11 h-11 rounded-xl flex items-center justify-center"
                   style={{ backgroundColor: 'hsla(35,78%,40%,0.2)', color: AMBER_LIGHT }}
@@ -390,7 +406,7 @@ export default function Consulting() {
               Why a qualified Caribbean pharmacist?
             </h2>
             <p className="text-[hsl(200,10%,40%)] leading-relaxed">
-              A pharmacist practising in the US or UK has no working knowledge of the CDAP formulary, the National Health Fund in Jamaica, or the Barbados Drug Service. They cannot advise on local generic substitutions, regional drug availability, or the specific programmes your prescriptions may be drawn from.
+              A pharmacist practising in the US or UK has no working knowledge of the CDAP formulary, the National Health Fund in Jamaica, or the Barbados Drug Service. They cannot advise on local generic options for physician review and approval, regional drug availability, or the specific programmes your prescriptions may be drawn from.
             </p>
             <p className="text-[hsl(200,10%,40%)] leading-relaxed">
               Our consulting pharmacists are active practitioners within the Caribbean healthcare system. That clinical context is not supplementary to their expertise — it is the foundation of it.
