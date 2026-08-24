@@ -24,6 +24,13 @@ export default function Nav() {
   const location = useLocation()
   const [menuOpen, setMenuOpen] = useState(false)
 
+  // Sign In follows the product the visitor is looking at — the Consulting
+  // page must never push people into the Academy app.
+  const onConsulting = location.pathname.startsWith('/consulting')
+  const signInHref = onConsulting ? 'https://consulting.pixopharm.com' : 'https://academy.pixopharm.com'
+  const signInLabel = onConsulting ? 'Open Consulting' : 'Sign In'
+  const signInLabelMobile = onConsulting ? 'Open Pixopharm Consulting' : 'Sign In to Academy'
+
   return (
     <nav className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-[hsl(180,15%,88%)]">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
@@ -51,11 +58,11 @@ export default function Nav() {
           })}
         </div>
 
-        {/* Desktop CTA — Sign In to Academy */}
+        {/* Desktop CTA — follows the product in view */}
         <div className="hidden md:block">
-          <a href="https://academy.pixopharm.com" target="_blank" rel="noopener noreferrer">
+          <a href={signInHref} target="_blank" rel="noopener noreferrer">
             <Button size="sm" className="bg-[hsl(168,60%,32%)] hover:bg-[hsl(168,60%,26%)] text-white font-medium">
-              Sign In
+              {signInLabel}
             </Button>
           </a>
         </div>
@@ -92,9 +99,9 @@ export default function Nav() {
             </Link>
           ))}
           <div className="pt-3 border-t border-[hsl(180,15%,92%)]">
-            <a href="https://academy.pixopharm.com" target="_blank" rel="noopener noreferrer">
+            <a href={signInHref} target="_blank" rel="noopener noreferrer">
               <Button size="sm" className="w-full bg-[hsl(168,60%,32%)] hover:bg-[hsl(168,60%,26%)] text-white font-medium">
-                Sign In to Academy
+                {signInLabelMobile}
               </Button>
             </a>
           </div>
