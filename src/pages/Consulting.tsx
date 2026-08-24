@@ -3,10 +3,9 @@ import Nav from '@/components/Nav'
 import Footer from '@/components/Footer'
 import { Card, CardContent } from '@/components/ui/card'
 
-// Pixopharm Consulting app — deployed at app.pixopharm.com
-// (DNS A record needed: app.pixopharm.com → 76.76.21.21)
-// Temporary Vercel URL works immediately while DNS propagates
-const CONSULTING_APP_URL = 'https://pixopharm-consulting.vercel.app'
+// Pixopharm Consulting app — lives at consulting.pixopharm.com
+// (Namecheap CNAME: consulting → cname.vercel-dns.com)
+const CONSULTING_APP_URL = 'https://consulting.pixopharm.com'
 
 // Set to true — booking is now live via the Pixopharm Consulting app
 const BOOKING_LIVE = true
