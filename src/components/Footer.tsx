@@ -46,6 +46,11 @@ export default function Footer() {
                   Pixopharm Consulting
                 </Link>
               </li>
+              <li>
+                <a href="https://consulting.pixopharm.com/signin" target="_blank" rel="noopener noreferrer" className="text-sm text-[hsl(200,10%,40%)] hover:text-[hsl(35,78%,40%)] transition-colors">
+                  Pharmacist &amp; staff sign in
+                </a>
+              </li>
             </ul>
           </div>
 

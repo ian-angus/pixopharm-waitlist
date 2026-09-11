@@ -26,10 +26,16 @@ export default function Nav() {
 
   // Sign In follows the product the visitor is looking at — the Consulting
   // page must never push people into the Academy app.
+  // On the Consulting page the one job is booking — the CTA jumps to the
+  // booking module rather than bouncing visitors to another site.
   const onConsulting = location.pathname.startsWith('/consulting')
-  const signInHref = onConsulting ? 'https://consulting.pixopharm.com' : 'https://academy.pixopharm.com'
-  const signInLabel = onConsulting ? 'Open Consulting' : 'Sign In'
-  const signInLabelMobile = onConsulting ? 'Open Pixopharm Consulting' : 'Sign In to Academy'
+  const signInHref = onConsulting ? '/consulting#book' : 'https://academy.pixopharm.com'
+  const signInLabel = onConsulting ? 'Book a Session' : 'Sign In'
+  const signInLabelMobile = onConsulting ? 'Book a Session' : 'Sign In to Academy'
+  const ctaColor = onConsulting
+    ? 'bg-[hsl(35,78%,40%)] hover:bg-[hsl(35,78%,32%)]'
+    : 'bg-[hsl(168,60%,32%)] hover:bg-[hsl(168,60%,26%)]'
+  const ctaExternal = !onConsulting
 
   return (
     <nav className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-[hsl(180,15%,88%)]">
@@ -60,8 +66,8 @@ export default function Nav() {
 
         {/* Desktop CTA — follows the product in view */}
         <div className="hidden md:block">
-          <a href={signInHref} target="_blank" rel="noopener noreferrer">
-            <Button size="sm" className="bg-[hsl(168,60%,32%)] hover:bg-[hsl(168,60%,26%)] text-white font-medium">
+          <a href={signInHref} {...(ctaExternal ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>
+            <Button size="sm" className={`${ctaColor} text-white font-medium`}>
               {signInLabel}
             </Button>
           </a>
@@ -99,8 +105,8 @@ export default function Nav() {
             </Link>
           ))}
           <div className="pt-3 border-t border-[hsl(180,15%,92%)]">
-            <a href={signInHref} target="_blank" rel="noopener noreferrer">
-              <Button size="sm" className="w-full bg-[hsl(168,60%,32%)] hover:bg-[hsl(168,60%,26%)] text-white font-medium">
+            <a href={signInHref} {...(ctaExternal ? { target: '_blank', rel: 'noopener noreferrer' } : {})} onClick={() => setMenuOpen(false)}>
+              <Button size="sm" className={`w-full ${ctaColor} text-white font-medium`}>
                 {signInLabelMobile}
               </Button>
             </a>
