@@ -1,500 +1,477 @@
-import { Link } from 'react-router-dom'
+import { useEffect, useState } from 'react'
 import Nav from '@/components/Nav'
 import Footer from '@/components/Footer'
-import { Card, CardContent } from '@/components/ui/card'
 
-// Pixopharm Consulting app — lives at consulting.pixopharm.com
-// (Namecheap CNAME: consulting → cname.vercel-dns.com)
+// ============================================================================
+// Pixopharm Consulting — conversion-first product page.
+//
+// The page IS the booking: live services (real prices from the consulting
+// app's database), live pharmacists (real photos and specialties), and each
+// pharmacist's next real opening. Every "Book" click lands one step into
+// the booking flow at consulting.pixopharm.com with the service preselected.
+// Nothing a visitor can act on is hard-coded — change a price in the
+// consulting admin and this page follows on the next load.
+// ============================================================================
+
+const serif = { fontFamily: "'DM Serif Display', Georgia, serif" }
+
 const CONSULTING_APP_URL = 'https://consulting.pixopharm.com'
 
-// Set to true — booking is now live via the Pixopharm Consulting app
-const BOOKING_LIVE = true
+// The consulting app's public Supabase endpoints (same anon key the booking
+// page itself ships to every visitor — safe to embed, RLS enforces access).
+const SB_URL = 'https://hqyewiroiswmhfghkzhz.supabase.co'
+const SB_KEY = 'sb_publishable_d1GwG2ax6SrW8jW71nIamg_LV1OWpoB'
+const SB_HEADERS = { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` }
 
-// Accent colour for Consulting throughout this page
 const AMBER = 'hsl(35,78%,40%)'
-const AMBER_BG = 'hsl(35,78%,94%)'
-const AMBER_LIGHT = 'hsl(35,78%,60%)'
+const AMBER_DEEP = 'hsl(35,78%,32%)'
+const AMBER_TEXT = 'hsl(35,70%,62%)'
 
-function HeartIcon() {
+interface Service {
+  id: string
+  slug: string
+  name: string
+  description: string | null
+  price_cents: number
+  duration_min: number
+}
+
+interface PharmacistRow {
+  id: string
+  name: string
+  credentials: string | null
+  avatar_url: string | null
+  specialties: string[] | null
+}
+
+interface PharmacistCard extends PharmacistRow {
+  nextSlot: string | null
+}
+
+// Per-service presentation (CTA voice + footnote). Unknown slugs — services
+// added later in the admin — get the neutral default automatically.
+const SERVICE_VOICE: Record<string, { cta: string; note: string; flag?: string }> = {
+  'quick-question': { cta: 'Ask your question →', note: 'Most people start here' },
+  'standard-review': { cta: 'Book my review →', note: "Bring your pill bottles — that's all you need", flag: 'Most popular' },
+  'comprehensive-review': { cta: 'Book the full hour →', note: 'Ideal after a hospital stay' },
+}
+const DEFAULT_VOICE = { cta: 'Book now →', note: 'Private video session' }
+
+function money(cents: number): string {
+  return `$${(cents / 100).toFixed(cents % 100 === 0 ? 0 : 2)}`
+}
+
+function nextSlotLabel(iso: string | null): string {
+  if (!iso) return 'By appointment'
+  const d = new Date(iso)
+  const today = new Date()
+  const tomorrow = new Date(today)
+  tomorrow.setDate(today.getDate() + 1)
+  const same = (a: Date, b: Date) => a.toDateString() === b.toDateString()
+  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  if (same(d, today)) return `Today ${time}`
+  if (same(d, tomorrow)) return `Tomorrow ${time}`
+  return `${d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })} ${time}`
+}
+
+async function sbGet<T>(path: string): Promise<T> {
+  const r = await fetch(`${SB_URL}/rest/v1/${path}`, { headers: SB_HEADERS })
+  if (!r.ok) throw new Error(`supabase ${r.status}`)
+  return (await r.json()) as T
+}
+
+async function sbRpc<T>(fn: string, args: Record<string, unknown>): Promise<T> {
+  const r = await fetch(`${SB_URL}/rest/v1/rpc/${fn}`, {
+    method: 'POST',
+    headers: { ...SB_HEADERS, 'Content-Type': 'application/json' },
+    body: JSON.stringify(args),
+  })
+  if (!r.ok) throw new Error(`supabase rpc ${r.status}`)
+  return (await r.json()) as T
+}
+
+function useLiveBookingData() {
+  const [services, setServices] = useState<Service[] | null>(null)
+  const [failed, setFailed] = useState(false)
+  const [pharmacists, setPharmacists] = useState<PharmacistCard[] | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      try {
+        const svcs = await sbGet<Service[]>(
+          'consulting_services?active=eq.true&select=id,slug,name,description,price_cents,duration_min&order=position'
+        )
+        if (cancelled) return
+        setServices(svcs)
+
+        const phs = await sbGet<PharmacistRow[]>(
+          'consulting_pharmacists?active=eq.true&select=id,name,credentials,avatar_url,specialties&order=name'
+        )
+        if (cancelled) return
+        // Show the people immediately; availability chips fill in as they load.
+        setPharmacists(phs.map((p) => ({ ...p, nextSlot: null })))
+
+        // Next real opening per pharmacist (shortest service = finest slots).
+        const slotSvc = [...svcs].sort((a, b) => a.duration_min - b.duration_min)[0]
+        if (!slotSvc) return
+        const from = new Date().toISOString().slice(0, 10)
+        const horizon = new Date()
+        horizon.setDate(horizon.getDate() + 14)
+        const to = horizon.toISOString().slice(0, 10)
+        const withNext = await Promise.all(
+          phs.map(async (p): Promise<PharmacistCard> => {
+            try {
+              const slots = await sbRpc<{ starts_at: string }[]>('consulting_get_open_slots', {
+                p_pharmacist_id: p.id,
+                p_service_id: slotSvc.id,
+                p_from: from,
+                p_to: to,
+              })
+              return { ...p, nextSlot: slots[0]?.starts_at ?? null }
+            } catch {
+              return { ...p, nextSlot: null }
+            }
+          })
+        )
+        if (!cancelled) setPharmacists(withNext)
+      } catch {
+        if (!cancelled) setFailed(true)
+      }
+    }
+    void load()
+    return () => { cancelled = true }
+  }, [])
+
+  return { services, pharmacists, failed }
+}
+
+function Tick({ color = AMBER_TEXT }: { color?: string }) {
   return (
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+      <path d="M20 6 9 17l-5-5" />
     </svg>
   )
 }
 
-function ClipboardIcon() {
+// ── Booking module (lives in the hero) ───────────────────────────────────────
+
+function BookingModule({ services, pharmacists, failed }: ReturnType<typeof useLiveBookingData>) {
   return (
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <rect width="8" height="4" x="8" y="2" rx="1" ry="1"/>
-      <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
-      <path d="m9 14 2 2 4-4"/>
-    </svg>
-  )
-}
+    <div id="book" className="mt-10 rounded-2xl bg-white shadow-2xl overflow-hidden text-[hsl(200,25%,10%)] scroll-mt-20">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b border-[hsl(40,20%,90%)]">
+        <h2 className="text-xl" style={serif}>Book your session now</h2>
+        <span className="inline-flex items-center gap-2 rounded-full border border-[hsl(168,40%,80%)] bg-[hsl(168,45%,95%)] px-3 py-1 text-xs font-semibold text-[hsl(168,60%,26%)]">
+          <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+          Booking open
+        </span>
+      </div>
 
-function AlertIcon() {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>
-      <path d="M12 9v4"/><path d="M12 17h.01"/>
-    </svg>
-  )
-}
-
-function ShieldIcon() {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>
-      <path d="m9 12 2 2 4-4"/>
-    </svg>
-  )
-}
-
-function CalendarIcon() {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <rect width="18" height="18" x="3" y="4" rx="2" ry="2"/>
-      <line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/>
-      <line x1="3" x2="21" y1="10" y2="10"/>
-      <path d="m9 16 2 2 4-4"/>
-    </svg>
-  )
-}
-
-const PROBLEMS = [
-  "Prescribed five or more medications without a clear understanding of each one's purpose or indication",
-  "Multiple prescribers have contributed to your regimen, and no comprehensive review of the complete list has been conducted",
-  "Uncertain about the correct administration timing, dietary requirements, or dosing schedule for one or more of your medications",
-  "Concerned about potential interactions between two or more prescribed or over-the-counter products",
-  "Recently discharged from hospital with new prescriptions that have not been reconciled against your existing medications",
-  "Responsible for managing a family member's medication regimen without a clear, structured framework",
-]
-
-const WHAT_HAPPENS = [
-  {
-    step: '01',
-    title: 'Book your appointment',
-    desc: 'Choose your pharmacist, select an available time, and confirm your booking. You will receive an email confirmation with everything you need.',
-  },
-  {
-    step: '02',
-    title: 'Submit your medication record',
-    desc: 'Provide a complete list of your current medications, including all prescriptions, supplements, and over-the-counter products. Photographs, pharmacy printouts, or a written list are all acceptable.',
-  },
-  {
-    step: '03',
-    title: 'Structured medication review',
-    desc: 'Your pharmacist conducts a thorough assessment of each item — its indication, correct dosing schedule, contraindications, and clinical considerations. All questions are addressed in full.',
-  },
-  {
-    step: '04',
-    title: 'Receive your written medication plan',
-    desc: 'Following the consultation, you receive a personalised medication summary: a structured daily schedule, documented interaction alerts, and a list of clinical questions to raise at your next prescriber appointment.',
-  },
-]
-
-const WHO_FOR = [
-  {
-    title: 'Patients managing chronic conditions',
-    desc: 'Chronic conditions such as diabetes, hypertension, cardiac disease, or asthma frequently involve complex, multi-drug regimens. A structured medication review ensures every item is properly understood and appropriately managed.',
-    detail: 'Particularly relevant for CDAP-enrolled patients in Trinidad & Tobago and NHF beneficiaries in Jamaica.',
-    icon: <HeartIcon />,
-  },
-  {
-    title: 'Patients prescribed multiple medications',
-    desc: 'Patients prescribed five or more medications — particularly across multiple prescribers — face a significantly elevated risk of adverse drug interactions. A comprehensive pharmacist review identifies and addresses these risks.',
-    detail: 'The risk of adverse drug events increases with each additional medication. Most patients on five or more drugs have never had a formal medication review.',
-    icon: <ClipboardIcon />,
-  },
-  {
-    title: 'Recently discharged from hospital',
-    desc: 'Hospital discharge frequently introduces new medications alongside existing ones, creating reconciliation complexity. A structured post-discharge review supports a safe, well-managed transition.',
-    detail: 'Medication errors are most prevalent in the 30 days following hospital discharge. A consultation during this period materially reduces that risk.',
-    icon: <AlertIcon />,
-  },
-  {
-    title: 'Caregivers managing a family member\'s medications',
-    desc: 'Caregivers who oversee a family member\'s medication regimen carry significant clinical responsibility. A consultation provides a clear structured overview of all medications and a practical management framework.',
-    detail: 'Available for patients who are unable to attend in person — a caregiver or appointed representative may attend on their behalf.',
-    icon: <CalendarIcon />,
-  },
-  {
-    title: 'Healthcare professionals & administrators',
-    desc: 'Healthcare professionals and administrative stakeholders requiring guidance in standardizing patient care, improving safety, and ensuring regulatory compliance.',
-    detail: 'Advisory engagements for pharmacies, clinics, and healthcare organizations — SOPs, quality systems, and compliance frameworks grounded in Caribbean regulatory practice.',
-    icon: <ShieldIcon />,
-    wide: true,
-  },
-]
-
-// ── Booking section ───────────────────────────────────────────────────────────
-
-function BookingWidget() {
-  if (!BOOKING_LIVE) {
-    return (
-      <div className="rounded-2xl border border-[hsl(35,78%,80%)] bg-white p-10 text-center space-y-4">
-        <div className="w-12 h-12 rounded-full flex items-center justify-center mx-auto" style={{ backgroundColor: AMBER_BG }}>
-          <CalendarIcon />
+      {failed ? (
+        <div className="p-8 text-center space-y-3">
+          <p className="font-semibold">Live pricing is loading slowly right now.</p>
+          <p className="text-sm text-[hsl(200,10%,45%)]">Everything is still bookable — current prices and times are on the booking page.</p>
+          <a
+            href={`${CONSULTING_APP_URL}/book`}
+            className="inline-flex h-11 items-center justify-center rounded-lg px-7 text-sm font-bold text-white"
+            style={{ backgroundColor: AMBER }}
+          >
+            Book a consultation →
+          </a>
         </div>
-        <p className="font-semibold text-[hsl(200,25%,10%)]">Booking opens very soon</p>
-        <p className="text-sm text-[hsl(200,10%,48%)] max-w-sm mx-auto leading-relaxed">
-          Our pharmacists are being onboarded now. You will be able to choose your pharmacist and book directly from this page within days.
-        </p>
-        <p className="text-xs text-[hsl(200,10%,60%)]">No account required. Secure online booking powered by Jane.</p>
-      </div>
-    )
-  }
+      ) : services === null ? (
+        <div className="grid sm:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="p-6 space-y-3 border-b sm:border-b-0 sm:border-r last:border-0 border-[hsl(40,20%,92%)]">
+              <div className="h-4 w-32 rounded bg-[hsl(40,20%,93%)] animate-pulse" />
+              <div className="h-9 w-20 rounded bg-[hsl(40,20%,93%)] animate-pulse" />
+              <div className="h-12 rounded bg-[hsl(40,20%,95%)] animate-pulse" />
+              <div className="h-11 rounded-lg bg-[hsl(40,20%,93%)] animate-pulse" />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="grid sm:grid-cols-3">
+          {services.map((s) => {
+            const voice = SERVICE_VOICE[s.slug] ?? DEFAULT_VOICE
+            return (
+              <div
+                key={s.id}
+                className={`relative flex flex-col gap-2.5 p-6 border-b sm:border-b-0 sm:border-r last:border-0 border-[hsl(40,20%,92%)] ${voice.flag ? 'bg-[hsl(35,78%,96%)]' : ''}`}
+              >
+                {voice.flag && (
+                  <span
+                    className="absolute top-3.5 right-3.5 rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white"
+                    style={{ backgroundColor: AMBER }}
+                  >
+                    {voice.flag}
+                  </span>
+                )}
+                <p className="font-bold">{s.name}</p>
+                <p className="text-4xl" style={serif}>
+                  {money(s.price_cents)}
+                  <span className="ml-1.5 text-xs font-normal text-[hsl(200,10%,55%)]" style={{ fontFamily: 'inherit' }}>
+                    <span className="font-sans">USD · {s.duration_min} min</span>
+                  </span>
+                </p>
+                <p className="flex-1 text-sm text-[hsl(200,10%,45%)] leading-relaxed">{s.description}</p>
+                <a
+                  href={`${CONSULTING_APP_URL}/book?service=${s.slug}`}
+                  className="flex h-11 items-center justify-center rounded-lg text-sm font-bold text-white transition-opacity hover:opacity-90"
+                  style={{ backgroundColor: AMBER }}
+                >
+                  {voice.cta}
+                </a>
+                <p className="text-center text-[11px] text-[hsl(200,10%,58%)]">{voice.note}</p>
+              </div>
+            )
+          })}
+        </div>
+      )}
 
-  return (
-    <div className="rounded-2xl border border-[hsl(35,78%,75%)] bg-white p-10 text-center space-y-6">
-      <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto" style={{ backgroundColor: AMBER_BG }}>
-        <CalendarIcon />
-      </div>
-      <div className="space-y-2">
-        <p className="font-semibold text-lg text-[hsl(200,25%,10%)]">Choose your pharmacist</p>
-        <p className="text-sm text-[hsl(200,10%,48%)] max-w-sm mx-auto leading-relaxed">
-          Browse our registered Caribbean pharmacists, view their specialties and availability, and book your private video consultation in minutes.
-        </p>
-      </div>
-      <div className="flex flex-col sm:flex-row gap-3 justify-center">
-        <a
-          href={`${CONSULTING_APP_URL}/pharmacists`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center justify-center h-11 px-7 rounded-lg text-white font-medium text-sm transition-opacity hover:opacity-90"
-          style={{ backgroundColor: AMBER }}
-        >
-          Browse Pharmacists →
-        </a>
-        <a
-          href={CONSULTING_APP_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center justify-center h-11 px-7 rounded-lg font-medium text-sm border text-[hsl(35,78%,35%)] hover:bg-[hsl(35,78%,97%)] transition-colors"
-          style={{ borderColor: 'hsl(35,78%,65%)' }}
-        >
-          Learn more
-        </a>
-      </div>
-      <p className="text-xs text-[hsl(200,10%,60%)]">No account required to browse. Secure booking — private video call included.</p>
+      {/* Pharmacists strip — real people, real next openings */}
+      {pharmacists && pharmacists.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 border-t border-[hsl(40,20%,92%)] bg-[hsl(40,25%,97%)] px-6 py-4">
+          <span className="text-[13px] text-[hsl(200,10%,45%)]">Your pharmacists:</span>
+          {pharmacists.map((p) => (
+            <a
+              key={p.id}
+              href={`${CONSULTING_APP_URL}/pharmacists/${p.id}`}
+              className="flex items-center gap-2.5 rounded-full border border-[hsl(40,20%,88%)] bg-white py-1.5 pl-1.5 pr-4 transition-all hover:border-[hsl(35,78%,60%)] hover:shadow-sm"
+            >
+              {p.avatar_url ? (
+                <img src={p.avatar_url} alt={p.name} className="h-9 w-9 rounded-full object-cover object-[50%_20%]" />
+              ) : (
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[hsl(168,60%,32%)] text-xs font-bold text-white">
+                  {p.name.split(' ').map((w) => w[0]).slice(0, 2).join('')}
+                </span>
+              )}
+              <span className="leading-tight">
+                <span className="block text-[13px] font-bold">{p.name}</span>
+                <span className="block text-[11px] text-[hsl(168,60%,30%)]">
+                  {(p.specialties ?? []).slice(0, 2).join(' · ') || p.credentials || 'Licensed pharmacist'}
+                </span>
+              </span>
+              <span className="ml-1 border-l border-[hsl(40,20%,88%)] pl-2.5 text-[10.5px] leading-tight text-[hsl(200,10%,55%)]">
+                Next<br />
+                <b className="text-[11.5px] text-[hsl(168,60%,28%)]">{nextSlotLabel(p.nextSlot)}</b>
+              </span>
+            </a>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
 
+// ── Page ─────────────────────────────────────────────────────────────────────
+
+const QUESTIONS = [
+  {
+    q: 'Can I take my pressure tablets with bush tea?',
+    a: 'Some herbal teas genuinely interact with blood-pressure medicines. A pharmacist can tell you which ones — for your exact tablets.',
+    ask: 'quick-question',
+  },
+  {
+    q: 'Mummy came home from hospital with six new pills. Which ones does she still take?',
+    a: 'The month after discharge is when mix-ups happen most. One session sorts the new list against the old one.',
+    ask: 'standard-review',
+  },
+  {
+    q: 'Why do I feel dizzy since they changed my tablets?',
+    a: 'It might be the dose, the timing, or how two medicines meet. A pharmacist can spot it — and give you the exact question to bring to your doctor.',
+    ask: 'quick-question',
+  },
+]
+
+const STEPS = [
+  {
+    title: 'Pick a time that suits you',
+    desc: 'Choose your session above and take any open slot — evenings and weekends included.',
+  },
+  {
+    title: 'Tell us about your medicines',
+    desc: 'A short form before your call — your pill bottles or pharmacy printout is all you need. Only your pharmacist ever sees it.',
+  },
+  {
+    title: 'Talk it through, keep it in writing',
+    desc: 'A private video call with your pharmacist, then a written summary in your inbox — schedule, flags, and questions for your doctor.',
+  },
+]
+
 export default function Consulting() {
-  const scrollToBooking = (e: React.MouseEvent) => {
-    e.preventDefault()
-    document.getElementById('booking')?.scrollIntoView({ behavior: 'smooth' })
+  const live = useLiveBookingData()
+
+  const askPrice = (slug: string): string => {
+    const s = live.services?.find((x) => x.slug === slug)
+    return s ? `${money(s.price_cents)}` : ''
   }
+  const minPrice = live.services?.length
+    ? money(Math.min(...live.services.map((s) => s.price_cents)))
+    : null
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-[hsl(40,30%,98%)] pb-16 sm:pb-0">
       <Nav />
 
-      {/* ── Hero ──────────────────────────────────────────────────────────── */}
+      {/* ── Hero: the page IS the booking ─────────────────────────────────── */}
       <section className="relative overflow-hidden bg-[hsl(30,20%,8%)]">
-        <div className="absolute inset-0 -z-0 pointer-events-none">
-          <div className="absolute top-10 left-[6%] w-64 h-64 rounded-full blur-3xl opacity-20 animate-pulse-glow" style={{ backgroundColor: AMBER }} />
-          <div className="absolute top-32 right-[12%] w-48 h-48 rounded-full bg-[hsl(168,60%,25%)] blur-3xl opacity-10 animate-pulse-glow" style={{ animationDelay: '1.5s' }} />
+        <div className="pointer-events-none absolute inset-0">
+          <div className="absolute -top-24 left-[4%] h-96 w-96 rounded-full opacity-25 blur-3xl" style={{ backgroundColor: AMBER }} />
+          <div className="absolute -bottom-32 right-[3%] h-96 w-96 rounded-full bg-[hsl(168,60%,25%)] opacity-15 blur-3xl" />
         </div>
 
-        <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 pt-16 pb-20 sm:pt-24 sm:pb-28">
-          <div className="max-w-2xl space-y-5">
-            <div className="flex items-center gap-2">
-              <div className="w-1 h-8 rounded-full" style={{ backgroundColor: AMBER }} />
-              <span className="text-xs font-bold uppercase tracking-widest" style={{ color: 'hsl(35,78%,65%)' }}>
-                Pixopharm Consulting
-              </span>
-            </div>
-
-            {BOOKING_LIVE ? (
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-white/60 text-xs font-medium border border-white/15">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-                Now Booking
-              </div>
-            ) : (
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-white/60 text-xs font-medium border border-white/15">
-                <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" />
-                Opening Soon
-              </div>
-            )}
-
-            <h1 className="text-4xl sm:text-5xl font-bold text-white leading-[1.1] tracking-tight">
-              Understand your medications —<br />
-              <span style={{ color: 'hsl(35,78%,65%)' }}>and take them with confidence.</span>
-            </h1>
-
-            <p className="text-lg text-white/60 leading-relaxed">
-              Private, one-to-one consultations with a qualified Caribbean pharmacist. Present your complete medication record, and your pharmacist will conduct a thorough review — covering the indication, administration, interactions, and clinical considerations for each item, and preparing you with the right questions for your prescriber.
-            </p>
-
-            <div className="flex flex-col sm:flex-row gap-3 pt-2">
-              {BOOKING_LIVE ? (
-                <>
-                  <a
-                    href="#booking"
-                    onClick={scrollToBooking}
-                    className="inline-flex items-center justify-center h-11 px-6 rounded-lg font-medium text-sm text-white transition-opacity hover:opacity-90"
-                    style={{ backgroundColor: AMBER }}
-                  >
-                    Book a Consultation
-                  </a>
-                  <a
-                    href={`${CONSULTING_APP_URL}/pharmacists`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center justify-center h-11 px-6 rounded-lg font-medium text-sm text-white/70 hover:text-white border border-white/20 hover:border-white/35 hover:bg-white/5 transition-all"
-                  >
-                    Browse pharmacists →
-                  </a>
-                </>
-              ) : (
-                <a
-                  href="#booking"
-                  onClick={scrollToBooking}
-                  className="inline-flex items-center justify-center h-11 px-6 rounded-lg font-medium text-sm text-white opacity-70 transition-opacity"
-                  style={{ backgroundColor: AMBER }}
-                >
-                  Booking Opens Soon
-                </a>
-              )}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── The problem ───────────────────────────────────────────────────── */}
-      <section className="bg-[hsl(180,20%,97%)] border-b border-[hsl(180,15%,90%)]">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
-          <div className="max-w-2xl mx-auto text-center mb-10">
-            <h2 className="text-2xl sm:text-3xl font-bold text-[hsl(200,25%,10%)]">
-              Does any of this apply to you?
-            </h2>
-            <p className="mt-3 text-[hsl(200,10%,45%)]">
-              Medication-related uncertainty is more common than most patients acknowledge — and in the majority of cases, it is entirely preventable.
-            </p>
+        <div className="relative z-10 mx-auto max-w-6xl px-4 pb-16 pt-14 sm:px-6 sm:pt-20">
+          <div className="mb-4 flex items-center gap-2.5">
+            <div className="h-7 w-1 rounded-full" style={{ backgroundColor: AMBER }} />
+            <span className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: AMBER_TEXT }}>
+              Pixopharm Consulting
+            </span>
           </div>
 
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 max-w-5xl mx-auto">
-            {PROBLEMS.map((problem, i) => (
-              <div key={i} className="bg-white rounded-xl border border-[hsl(180,15%,90%)] p-4 flex items-start gap-3">
-                <span className="shrink-0 mt-0.5" style={{ color: AMBER }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M20 6 9 17l-5-5"/>
-                  </svg>
-                </span>
-                <p className="text-sm text-[hsl(200,10%,38%)] leading-relaxed">{problem}</p>
-              </div>
+          <h1 className="max-w-3xl text-4xl leading-[1.08] text-white sm:text-5xl lg:text-6xl" style={serif}>
+            Like having a pharmacist <em className="not-italic" style={{ color: AMBER_TEXT }}>in the family.</em>
+          </h1>
+
+          <p className="mt-5 max-w-2xl text-lg leading-relaxed text-white/65">
+            Sit down over private video with a registered Caribbean pharmacist who knows your medicines, your
+            programmes — CDAP, NHF — and your questions. Ask anything. Leave with answers in writing.
+          </p>
+
+          <ul className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-[13px] text-white/55">
+            {['Registered Caribbean pharmacists', 'Private video call — nothing to install', 'Written summary after every session'].map((t) => (
+              <li key={t} className="flex items-center gap-2"><Tick /> {t}</li>
             ))}
-          </div>
+          </ul>
 
-          <p className="mt-8 text-center text-sm text-[hsl(200,10%,48%)]">
-            A single structured consultation with a qualified pharmacist can address each of these directly.
-          </p>
+          <BookingModule {...live} />
         </div>
       </section>
 
-      {/* ── How it works ──────────────────────────────────────────────────── */}
-      <section className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
-        <div className="text-center mb-12">
-          <h2 className="text-2xl sm:text-3xl font-bold text-[hsl(200,25%,10%)]">How a consultation works</h2>
-          <p className="mt-3 text-[hsl(200,10%,45%)] max-w-md mx-auto">
-            Four steps. One session. A structured, actionable plan.
-          </p>
-        </div>
-
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
-          {WHAT_HAPPENS.map((step, i) => (
-            <div key={i} className="relative space-y-3">
-              {i < WHAT_HAPPENS.length - 1 && (
-                <div className="hidden lg:block absolute top-5 left-[calc(100%-8px)] w-full h-px z-0" style={{ backgroundColor: 'hsl(35,78%,85%)' }} />
-              )}
-              <div
-                className="relative z-10 w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold"
-                style={{ backgroundColor: AMBER }}
-              >
-                {step.step}
-              </div>
-              <h3 className="font-semibold text-sm text-[hsl(200,25%,10%)]">{step.title}</h3>
-              <p className="text-sm text-[hsl(200,10%,45%)] leading-relaxed">{step.desc}</p>
-            </div>
+      {/* ── Every question is a good question ─────────────────────────────── */}
+      <section className="mx-auto max-w-6xl px-4 py-16 text-center sm:px-6 sm:py-20">
+        <h2 className="text-3xl text-[hsl(200,25%,10%)] sm:text-4xl" style={serif}>
+          Every question is a good question.
+        </h2>
+        <p className="mt-3 text-[hsl(200,10%,45%)]">
+          The ones below get asked every day — and every one of them deserved a real answer.
+        </p>
+        <div className="mt-9 grid gap-4 text-left sm:grid-cols-3">
+          {QUESTIONS.map((item) => (
+            <a
+              key={item.q}
+              href={`${CONSULTING_APP_URL}/book?service=${item.ask}`}
+              className="group flex flex-col gap-3 rounded-2xl border border-[hsl(40,20%,90%)] bg-white p-6 transition-all hover:-translate-y-0.5 hover:shadow-lg"
+            >
+              <p className="text-lg leading-snug text-[hsl(200,25%,12%)]" style={serif}>
+                <span style={{ color: AMBER }}>“</span>{item.q}<span style={{ color: AMBER }}>”</span>
+              </p>
+              <p className="flex-1 text-sm leading-relaxed text-[hsl(200,10%,45%)]">{item.a}</p>
+              <span className="text-sm font-bold group-hover:underline" style={{ color: AMBER_DEEP }}>
+                {item.ask === 'quick-question' ? `Ask${askPrice('quick-question') ? ` for ${askPrice('quick-question')}` : ''} →` : `Book a review${askPrice('standard-review') ? ` — ${askPrice('standard-review')}` : ''} →`}
+              </span>
+            </a>
           ))}
         </div>
       </section>
 
-      {/* ── Booking ───────────────────────────────────────────────────────── */}
-      <section id="booking" className="bg-[hsl(35,78%,97%)] border-t border-b border-[hsl(35,78%,88%)]">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 py-14 sm:py-16">
-
-          <div className="text-center mb-8 space-y-2">
-            <h2 className="text-2xl sm:text-3xl font-bold text-[hsl(200,25%,10%)]">
-              {BOOKING_LIVE ? 'Book your consultation' : 'Booking opens soon'}
-            </h2>
-            {BOOKING_LIVE ? (
-              <p className="text-[hsl(200,10%,45%)] max-w-sm mx-auto">
-                Choose your pharmacist and a time that suits you. Consultations are conducted privately via video call.
-              </p>
-            ) : (
-              <p className="text-[hsl(200,10%,45%)] max-w-sm mx-auto">
-                We are onboarding our pharmacists now. Booking will open directly on this page — no external accounts required.
-              </p>
-            )}
-          </div>
-
-          {/* Trust row */}
-          <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 mb-8">
-            {[
-              'Private video consultation',
-              'Registered pharmacists only',
-              'Written report included',
-              'Private video call included',
-            ].map(t => (
-              <span key={t} className="flex items-center gap-1.5 text-xs text-[hsl(200,10%,45%)]">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={AMBER} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M20 6 9 17l-5-5"/>
-                </svg>
-                {t}
-              </span>
-            ))}
-          </div>
-
-          <BookingWidget />
-
-          <p className="mt-4 text-center text-xs text-[hsl(200,10%,58%)]">
-            Consultations are conducted privately via secure video call. Your information is never shared.
+      {/* ── How it works ──────────────────────────────────────────────────── */}
+      <section className="border-y border-[hsl(40,20%,90%)] bg-white">
+        <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
+          <h2 className="text-center text-3xl text-[hsl(200,25%,10%)]" style={serif}>
+            Booked to answered in three steps
+          </h2>
+          <p className="mt-2 text-center text-[hsl(200,10%,45%)]">
+            No account to create. No app to install. Just you and your pharmacist.
           </p>
-        </div>
-      </section>
-
-      {/* ── Who it's for ──────────────────────────────────────────────────── */}
-      <section className="bg-[hsl(30,20%,8%)]">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
-          <div className="text-center mb-12">
-            <h2 className="text-2xl sm:text-3xl font-bold text-white">
-              Who we help
-            </h2>
-            <p className="mt-3 text-white/50 max-w-md mx-auto">
-              Any patient managing medications in the Caribbean — whether your own regimen or that of someone in your care — and the professionals and organizations responsible for patient safety.
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-2 gap-5">
-            {WHO_FOR.map((item, i) => (
-              <div key={i} className={`rounded-xl bg-white/5 border border-white/10 p-6 space-y-3 hover:bg-white/8 transition-colors${item.wide ? ' md:col-span-2' : ''}`}>
-                <div
-                  className="w-11 h-11 rounded-xl flex items-center justify-center"
-                  style={{ backgroundColor: 'hsla(35,78%,40%,0.2)', color: AMBER_LIGHT }}
-                >
-                  {item.icon}
+          <div className="mt-10 grid gap-7 sm:grid-cols-3">
+            {STEPS.map((s, i) => (
+              <div key={s.title}>
+                <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold text-white" style={{ backgroundColor: AMBER }}>
+                  {i + 1}
                 </div>
-                <h3 className="font-semibold text-white">{item.title}</h3>
-                <p className="text-sm text-white/60 leading-relaxed">{item.desc}</p>
-                <p className="text-xs text-white/35 leading-relaxed border-t border-white/10 pt-3">{item.detail}</p>
+                <h3 className="mb-1.5 font-semibold text-[hsl(200,25%,10%)]">{s.title}</h3>
+                <p className="text-sm leading-relaxed text-[hsl(200,10%,45%)]">{s.desc}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ── Why Pixopharm ─────────────────────────────────────────────────── */}
-      <section className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
-        <div className="grid md:grid-cols-2 gap-12 items-center">
-          <div className="space-y-5">
-            <h2 className="text-2xl sm:text-3xl font-bold text-[hsl(200,25%,10%)]">
-              Why a qualified Caribbean pharmacist?
+      {/* ── Trust ─────────────────────────────────────────────────────────── */}
+      <section className="bg-[hsl(30,20%,8%)]">
+        <div className="mx-auto grid max-w-6xl items-center gap-10 px-4 py-16 sm:px-6 md:grid-cols-2">
+          <div>
+            <h2 className="text-3xl leading-tight text-white" style={serif}>
+              A pharmacist who knows <em className="not-italic" style={{ color: AMBER_TEXT }}>this</em> region.
             </h2>
-            <p className="text-[hsl(200,10%,40%)] leading-relaxed">
-              A pharmacist practising in the US or UK has no working knowledge of the CDAP formulary, the National Health Fund in Jamaica, or the Barbados Drug Service. They cannot advise on local generic options for physician review and approval, regional drug availability, or the specific programmes your prescriptions may be drawn from.
+            <p className="mt-4 text-[15px] leading-relaxed text-white/60">
+              A pharmacist abroad has never worked with CDAP in Trinidad, the NHF in Jamaica, or the Barbados Drug
+              Service. Ours practise inside the Caribbean healthcare system every day — that context isn't extra,
+              it's the whole point.
             </p>
-            <p className="text-[hsl(200,10%,40%)] leading-relaxed">
-              Our consulting pharmacists are active practitioners within the Caribbean healthcare system. That clinical context is not supplementary to their expertise — it is the foundation of it.
-            </p>
+            <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-5">
+              <p className="font-semibold" style={{ color: AMBER_TEXT }}>Our privacy promise:</p>
+              <p className="mt-1 text-sm leading-relaxed text-white/65">
+                Exactly one person sees your health information — the pharmacist you booked. Not our admin team, not
+                anyone else. The database itself enforces it.
+              </p>
+            </div>
           </div>
-
-          <div className="space-y-3">
+          <div className="flex flex-col gap-3.5">
             {[
-              { title: 'Caribbean healthcare context', desc: 'CDAP, NHF, Barbados Drug Service, local formularies, regional drug availability — understood from within the system, not from the outside looking in.' },
-              { title: 'Registered pharmacists only', desc: 'Every consultation is conducted by a registered pharmacist. You receive expert clinical guidance — not an algorithm.' },
-              { title: 'Written report provided', desc: 'Each consultation concludes with a written medication summary: a structured daily schedule, documented interaction flags, and prepared questions for your prescriber.' },
-              { title: 'Strictly private and confidential', desc: 'Your medication record is sensitive clinical information. All consultations are conducted one-to-one and are never disclosed or shared.' },
-            ].map((item, i) => (
-              <Card key={i} className="border-[hsl(180,15%,90%)] bg-white hover:shadow-sm hover:border-[hsl(35,78%,70%)] transition-all">
-                <CardContent className="p-4 flex items-start gap-3">
-                  <span className="shrink-0 mt-0.5" style={{ color: AMBER }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M20 6 9 17l-5-5"/>
-                    </svg>
-                  </span>
-                  <div>
-                    <p className="font-semibold text-sm text-[hsl(200,25%,10%)]">{item.title}</p>
-                    <p className="text-sm text-[hsl(200,10%,48%)] mt-0.5 leading-relaxed">{item.desc}</p>
-                  </div>
-                </CardContent>
-              </Card>
+              { t: 'Registered pharmacists only', d: 'Every session is with a licensed, registered pharmacist — credentials on file, never an algorithm.' },
+              { t: 'Complementary care, not a replacement', d: 'We work alongside your doctor and your pharmacy — and send you to them with better questions.' },
+              { t: 'A written plan you keep', d: 'Every consultation ends with a personal medication summary emailed to you.' },
+            ].map((x) => (
+              <div key={x.t} className="rounded-xl border border-white/10 bg-white/5 px-5 py-4">
+                <p className="text-[14.5px] font-bold text-white">{x.t}</p>
+                <p className="mt-0.5 text-[13.5px] text-white/55">{x.d}</p>
+              </div>
             ))}
           </div>
         </div>
       </section>
 
       {/* ── Final CTA ─────────────────────────────────────────────────────── */}
-      <section className="border-t border-[hsl(180,15%,90%)]" style={{ backgroundColor: AMBER_BG }}>
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 py-14 sm:py-16 text-center space-y-5">
-          {BOOKING_LIVE ? (
-            <>
-              <h2 className="text-2xl font-bold text-[hsl(200,25%,10%)]">
-                Ready to get clarity on your medications?
-              </h2>
-              <p className="text-[hsl(200,10%,45%)] max-w-md mx-auto">
-                Choose your pharmacist and book a time that suits you. Your consultation is private, structured, and ends with a written plan you can act on immediately.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                <a
-                  href="#booking"
-                  onClick={scrollToBooking}
-                  className="inline-flex items-center justify-center h-11 px-7 rounded-lg text-white font-medium text-sm transition-opacity hover:opacity-90"
-                  style={{ backgroundColor: AMBER }}
-                >
-                  Book a Consultation
-                </a>
-                <Link
-                  to="/"
-                  className="inline-flex items-center justify-center h-11 px-7 rounded-lg font-medium text-sm border text-[hsl(35,78%,35%)] hover:bg-white transition-colors"
-                  style={{ borderColor: 'hsl(35,78%,65%)' }}
-                >
-                  Back to Home
-                </Link>
-              </div>
-            </>
-          ) : (
-            <>
-              <h2 className="text-2xl font-bold text-[hsl(200,25%,10%)]">
-                Consultations are opening very soon.
-              </h2>
-              <p className="text-[hsl(200,10%,45%)] max-w-md mx-auto">
-                Our pharmacists are being onboarded now. When booking goes live, you will be able to choose your pharmacist and schedule directly from this page.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                <div
-                  className="inline-flex items-center justify-center h-11 px-7 rounded-lg text-white font-medium text-sm cursor-default opacity-75"
-                  style={{ backgroundColor: AMBER }}
-                >
-                  Booking Opens Soon
-                </div>
-                <Link
-                  to="/"
-                  className="inline-flex items-center justify-center h-11 px-7 rounded-lg font-medium text-sm border text-[hsl(35,78%,35%)] hover:bg-white transition-colors"
-                  style={{ borderColor: 'hsl(35,78%,65%)' }}
-                >
-                  Back to Home
-                </Link>
-              </div>
-            </>
-          )}
+      <section className="border-t border-[hsl(35,60%,85%)] bg-[hsl(35,78%,95%)]">
+        <div className="mx-auto max-w-3xl px-4 py-16 text-center sm:px-6">
+          <h2 className="text-3xl text-[hsl(200,25%,10%)] sm:text-4xl" style={serif}>
+            {minPrice ? <>{minPrice} and fifteen minutes.<br />One less thing to worry about.</> : <>Fifteen minutes.<br />One less thing to worry about.</>}
+          </h2>
+          <p className="mt-3 text-[hsl(200,10%,45%)]">
+            Your first question is the hardest one to ask. After that, it's just a conversation.
+          </p>
+          <a
+            href="#book"
+            onClick={(e) => { e.preventDefault(); document.getElementById('book')?.scrollIntoView({ behavior: 'smooth' }) }}
+            className="mt-7 inline-flex h-[52px] items-center justify-center rounded-xl px-9 text-base font-bold text-white shadow-lg transition-opacity hover:opacity-90"
+            style={{ backgroundColor: AMBER }}
+          >
+            Book my session{minPrice ? ` — from ${minPrice}` : ''}
+          </a>
+          <p className="mt-3 text-xs text-[hsl(200,10%,58%)]">
+            Private video call · registered Caribbean pharmacists · written summary included
+          </p>
         </div>
       </section>
 
       <Footer />
+
+      {/* Sticky mobile book bar */}
+      <div className="fixed inset-x-0 bottom-0 z-50 flex items-center justify-between gap-3 border-t border-[hsl(40,20%,88%)] bg-white px-4 py-2.5 shadow-[0_-6px_24px_rgba(0,0,0,0.08)] sm:hidden" style={{ paddingBottom: 'calc(0.625rem + env(safe-area-inset-bottom))' }}>
+        <span className="text-[13px] text-[hsl(200,10%,45%)]">
+          Sessions{minPrice ? <> from <b className="text-[15px] text-[hsl(200,25%,10%)]">{minPrice}</b></> : ''}
+        </span>
+        <a
+          href="#book"
+          onClick={(e) => { e.preventDefault(); document.getElementById('book')?.scrollIntoView({ behavior: 'smooth' }) }}
+          className="rounded-lg px-6 py-2.5 text-sm font-bold text-white"
+          style={{ backgroundColor: AMBER }}
+        >
+          Book now
+        </a>
+      </div>
     </div>
   )
 }
