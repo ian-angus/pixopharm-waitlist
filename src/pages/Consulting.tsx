@@ -46,6 +46,7 @@ interface PharmacistRow {
 
 interface PharmacistCard extends PharmacistRow {
   nextSlot: string | null
+  licensed: string[] // country flags, e.g. ["🇹🇹"]
 }
 
 // Per-service presentation (CTA voice + footnote). Unknown slugs — services
@@ -105,12 +106,16 @@ function useLiveBookingData() {
         if (cancelled) return
         setServices(svcs)
 
-        const phs = await sbGet<PharmacistRow[]>(
-          'consulting_pharmacists?active=eq.true&select=id,name,credentials,avatar_url,specialties&order=name'
-        )
+        const [phs, serving, allCountries] = await Promise.all([
+          sbGet<PharmacistRow[]>('consulting_pharmacists?active=eq.true&select=id,name,credentials,avatar_url,specialties&order=name'),
+          sbGet<{ pharmacist_id: string; country: string }[]>('consulting_pharmacist_serving?select=pharmacist_id,country').catch(() => []),
+          sbGet<{ code: string; flag: string }[]>('consulting_countries?select=code,flag').catch(() => []),
+        ])
         if (cancelled) return
+        const flagOf = Object.fromEntries(allCountries.map((c) => [c.code, c.flag]))
+        const servedBy = (id: string) => serving.filter((r) => r.pharmacist_id === id).map((r) => flagOf[r.country] ?? r.country)
         // Show the people immediately; availability chips fill in as they load.
-        setPharmacists(phs.map((p) => ({ ...p, nextSlot: null })))
+        setPharmacists(phs.map((p) => ({ ...p, nextSlot: null, licensed: servedBy(p.id) })))
 
         // Next real opening per pharmacist (shortest service = finest slots).
         const slotSvc = [...svcs].sort((a, b) => a.duration_min - b.duration_min)[0]
@@ -119,8 +124,9 @@ function useLiveBookingData() {
         const horizon = new Date()
         horizon.setDate(horizon.getDate() + 14)
         const to = horizon.toISOString().slice(0, 10)
+        const cards = phs.map((p) => ({ ...p, nextSlot: null as string | null, licensed: servedBy(p.id) }))
         const withNext = await Promise.all(
-          phs.map(async (p): Promise<PharmacistCard> => {
+          cards.map(async (p: PharmacistCard): Promise<PharmacistCard> => {
             try {
               const slots = await sbRpc<{ starts_at: string }[]>('consulting_get_open_slots', {
                 p_pharmacist_id: p.id,
@@ -247,7 +253,10 @@ function BookingModule({ services, pharmacists, failed }: ReturnType<typeof useL
                 </span>
               )}
               <span className="leading-tight">
-                <span className="block text-[13px] font-bold">{p.name}</span>
+                <span className="block text-[13px] font-bold">
+                  {p.name}
+                  {p.licensed.length > 0 && <span className="ml-1" title="Licensed jurisdictions">{p.licensed.join(" ")}</span>}
+                </span>
                 <span className="block text-[11px] text-[hsl(168,60%,30%)]">
                   {(p.specialties ?? []).slice(0, 2).join(' · ') || p.credentials || 'Licensed pharmacist'}
                 </span>
